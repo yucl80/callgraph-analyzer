@@ -49,7 +49,9 @@ bool ProjectDB::initializeSchema() {
             call_file TEXT NOT NULL,
             call_line INTEGER NOT NULL,
             call_column INTEGER NOT NULL,
-            context_stack TEXT,
+            is_virtual_call BOOLEAN DEFAULT 0,
+            is_template_instantiation BOOLEAN DEFAULT 0,
+            is_exception_path BOOLEAN DEFAULT 0,
             is_macro_expansion BOOLEAN DEFAULT 0,
             macro_definition_file TEXT,
             macro_definition_line INTEGER,
@@ -83,12 +85,13 @@ bool ProjectDB::storeClass(const ASTSerializer::ClassInfo& cls) {
 bool ProjectDB::storeCallRelation(const ASTSerializer::CallInfo& call) {
     // First insert the call record
     std::string sql = R"(
-        INSERT INTO calls (caller_id, callee_id, call_file, call_line, call_column, 
+        INSERT INTO calls (caller_id, callee_id, call_file, call_line, call_column,
+                          is_virtual_call, is_template_instantiation, is_exception_path,
                           is_macro_expansion, macro_definition_file, macro_definition_line)
         VALUES (
             (SELECT id FROM functions WHERE qualified_name = ?),
             (SELECT id FROM functions WHERE qualified_name = ?),
-            ?, ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
     )";
 
@@ -102,9 +105,12 @@ bool ProjectDB::storeCallRelation(const ASTSerializer::CallInfo& call) {
     sqlite3_bind_text(stmt, 3, call.filePath.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 4, call.line);
     sqlite3_bind_int(stmt, 5, call.column);
-    sqlite3_bind_int(stmt, 6, call.isMacroExpansion ? 1 : 0);
-    sqlite3_bind_text(stmt, 7, call.macroDefinitionFile.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int(stmt, 8, call.macroDefinitionLine);
+    sqlite3_bind_int(stmt, 6, call.isVirtualCall ? 1 : 0);
+    sqlite3_bind_int(stmt, 7, call.isTemplateInstantiation ? 1 : 0);
+    sqlite3_bind_int(stmt, 8, call.isExceptionPath ? 1 : 0);
+    sqlite3_bind_int(stmt, 9, call.isMacroExpansion ? 1 : 0);
+    sqlite3_bind_text(stmt, 10, call.macroDefinitionFile.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 11, call.macroDefinitionLine);
 
     bool result = sqlite3_step(stmt) == SQLITE_DONE;
     sqlite3_finalize(stmt);

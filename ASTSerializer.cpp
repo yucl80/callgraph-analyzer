@@ -136,6 +136,12 @@ void ASTSerializer::processCallExpr(CXCursor cursor, const std::vector<std::stri
     CXSourceLocation loc = clang_getCursorLocation(cursor);
     clang_getExpansionLocation(loc, nullptr, &call.line, &call.column, nullptr);
 
+    // Check for special call types
+    call.isVirtualCall = clang_CXXMethod_isVirtual(referenced);
+    call.isTemplateInstantiation = (clang_getTemplateCursorKind(cursor) == CXCursor_FunctionTemplate);
+    call.isExceptionPath = (clang_getCursorKind(cursor) == CXCursor_CXXThrowExpr || 
+                          clang_getCursorKind(cursor) == CXCursor_CXXCatchStmt);
+
     // Check for macro expansion
     call.isMacroExpansion = (clang_getCursorKind(cursor) == CXCursor_MacroExpansion);
     if (call.isMacroExpansion) {
@@ -198,31 +204,44 @@ std::string ASTSerializer::getTypeSpelling(CXType type) {
 }
 
 bool ASTSerializer::saveToDatabase() {
-    ProjectDB db("callgraph.db");
-    if (!db.initializeSchema()) {
+    try {
+        ProjectDB db("callgraph.db");
+        if (!db.initializeSchema()) {
+            std::cerr << "Failed to initialize database schema" << std::endl;
+            return false;
+        }
+
+        // Store functions
+        for (const auto& func : functions_) {
+            if (!db.storeFunction(func)) {
+                std::cerr << "Failed to store function: " << func.qualifiedName << std::endl;
+                return false;
+            }
+        }
+
+        // Store classes
+        for (const auto& cls : classes_) {
+            if (!db.storeClass(cls)) {
+                std::cerr << "Failed to store class: " << cls.qualifiedName << std::endl;
+                return false;
+            }
+        }
+
+        // Store calls
+        for (const auto& call : calls_) {
+            if (!db.storeCallRelation(call)) {
+                std::cerr << "Failed to store call relation: " 
+                         << call.caller << " -> " << call.callee << std::endl;
+                return false;
+            }
+        }
+
+        std::cout << "Successfully stored " << functions_.size() << " functions, "
+                  << classes_.size() << " classes, and " << calls_.size() 
+                  << " call relations in database" << std::endl;
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Database error: " << e.what() << std::endl;
         return false;
     }
-
-    // Store functions
-    for (const auto& func : functions_) {
-        if (!db.storeFunction(func)) {
-            return false;
-        }
-    }
-
-    // Store classes
-    for (const auto& cls : classes_) {
-        if (!db.storeClass(cls)) {
-            return false;
-        }
-    }
-
-    // Store calls
-    for (const auto& call : calls_) {
-        if (!db.storeCallRelation(call)) {
-            return false;
-        }
-    }
-
-    return true;
 }

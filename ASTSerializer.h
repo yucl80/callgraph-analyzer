@@ -1,5 +1,7 @@
 #pragma once
 #include <clang-c/Index.h>
+#include <clang-c/CXString.h>
+#include <clang-c/CXSourceLocation.h>
 #include <string>
 #include <vector>
 #include <sqlite3.h>
@@ -34,6 +36,9 @@ public:
         bool isMacroExpansion;
         std::string macroDefinitionFile;
         unsigned macroDefinitionLine;
+        bool isVirtualCall;
+        bool isTemplateInstantiation;
+        bool isExceptionPath;
         std::vector<std::string> contextStack;
     };
 
