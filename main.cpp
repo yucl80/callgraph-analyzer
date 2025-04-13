@@ -3,6 +3,7 @@
 #include <string>
 #include <map>
 #include <set>
+#include "ASTSerializer.h"
 
 std::string getCursorSpelling(CXCursor cursor) {
     CXString name = clang_getCursorSpelling(cursor);
@@ -321,6 +322,15 @@ int main(int argc, char** argv) {
 
     CXCursor cursor = clang_getTranslationUnitCursor(unit);
     clang_visitChildren(cursor, visitor, nullptr);
+
+    // Save call graph to database
+    ASTSerializer serializer("callgraph.db");
+    if (!serializer.serializeTranslationUnit(unit)) {
+        std::cerr << "Failed to serialize translation unit" << std::endl;
+    }
+    if (!serializer.saveToDatabase()) {
+        std::cerr << "Failed to save call graph to database" << std::endl;
+    }
 
     clang_disposeTranslationUnit(unit);
     clang_disposeIndex(index);
