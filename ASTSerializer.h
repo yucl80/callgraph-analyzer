@@ -39,6 +39,7 @@ public:
         bool isVirtualCall;
         bool isTemplateInstantiation;
         bool isExceptionPath;
+        bool isDynamicCast;
         std::vector<std::string> contextStack;
     };
 

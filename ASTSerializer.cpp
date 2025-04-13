@@ -45,6 +45,9 @@ void ASTSerializer::traverseAST(CXCursor cursor) {
         case CXCursor_CallExpr:
             processCallExpr(cursor, currentContextStack_);
             break;
+        case CXCursor_CXXDynamicCastExpr:
+            processCallExpr(cursor, currentContextStack_);
+            break;
         case CXCursor_CXXBaseSpecifier:
             processInheritance(cursor);
             break;
@@ -141,6 +144,7 @@ void ASTSerializer::processCallExpr(CXCursor cursor, const std::vector<std::stri
     call.isTemplateInstantiation = (clang_getTemplateCursorKind(cursor) == CXCursor_FunctionTemplate);
     call.isExceptionPath = (clang_getCursorKind(cursor) == CXCursor_CXXThrowExpr || 
                           clang_getCursorKind(cursor) == CXCursor_CXXCatchStmt);
+    call.isDynamicCast = (clang_getCursorKind(cursor) == CXCursor_CXXDynamicCastExpr);
 
     // Check for macro expansion
     call.isMacroExpansion = (clang_getCursorKind(cursor) == CXCursor_MacroExpansion);
@@ -200,6 +204,30 @@ std::string ASTSerializer::getTypeSpelling(CXType type) {
     CXString typeName = clang_getTypeSpelling(type);
     std::string result = clang_getCString(typeName);
     clang_disposeString(typeName);
+
+    // Handle pointer types
+    if (type.kind == CXType_Pointer) {
+        CXType pointeeType = clang_getPointeeType(type);
+        std::string pointee = getTypeSpelling(pointeeType);
+        return pointee + "*";
+    }
+    // Handle function pointer types
+    else if (type.kind == CXType_FunctionProto || type.kind == CXType_FunctionNoProto) {
+        std::string funcPtr = "(";
+        // Return type
+        CXType retType = clang_getResultType(type);
+        funcPtr += getTypeSpelling(retType) + ")(";
+        // Parameters
+        int numArgs = clang_getNumArgTypes(type);
+        for (int i = 0; i < numArgs; i++) {
+            CXType argType = clang_getArgType(type, i);
+            funcPtr += getTypeSpelling(argType);
+            if (i < numArgs - 1) funcPtr += ", ";
+        }
+        funcPtr += ")";
+        return funcPtr;
+    }
+    
     return result;
 }
 
