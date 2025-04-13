@@ -43,11 +43,27 @@ bool ProjectDB::initializeSchema() {
         );
 
         CREATE TABLE IF NOT EXISTS calls (
+            id INTEGER PRIMARY KEY,
             caller_id INTEGER NOT NULL,
             callee_id INTEGER NOT NULL,
-            PRIMARY KEY (caller_id, callee_id),
+            call_file TEXT NOT NULL,
+            call_line INTEGER NOT NULL,
+            call_column INTEGER NOT NULL,
+            context_stack TEXT,
+            is_macro_expansion BOOLEAN DEFAULT 0,
+            macro_definition_file TEXT,
+            macro_definition_line INTEGER,
             FOREIGN KEY (caller_id) REFERENCES functions(id),
             FOREIGN KEY (callee_id) REFERENCES functions(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS call_contexts (
+            call_id INTEGER NOT NULL,
+            context_func_id INTEGER NOT NULL,
+            depth INTEGER NOT NULL,
+            PRIMARY KEY (call_id, context_func_id),
+            FOREIGN KEY (call_id) REFERENCES calls(id),
+            FOREIGN KEY (context_func_id) REFERENCES functions(id)
         );
     )";
 
@@ -64,9 +80,61 @@ bool ProjectDB::storeClass(const ASTSerializer::ClassInfo& cls) {
     return true;
 }
 
-bool ProjectDB::storeCallRelation(const std::string& caller, 
-                                const std::string& callee) {
-    // Implementation...
+bool ProjectDB::storeCallRelation(const ASTSerializer::CallInfo& call) {
+    // First insert the call record
+    std::string sql = R"(
+        INSERT INTO calls (caller_id, callee_id, call_file, call_line, call_column, 
+                          is_macro_expansion, macro_definition_file, macro_definition_line)
+        VALUES (
+            (SELECT id FROM functions WHERE qualified_name = ?),
+            (SELECT id FROM functions WHERE qualified_name = ?),
+            ?, ?, ?, ?, ?, ?
+        )
+    )";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+
+    sqlite3_bind_text(stmt, 1, call.caller.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, call.callee.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, call.filePath.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 4, call.line);
+    sqlite3_bind_int(stmt, 5, call.column);
+    sqlite3_bind_int(stmt, 6, call.isMacroExpansion ? 1 : 0);
+    sqlite3_bind_text(stmt, 7, call.macroDefinitionFile.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 8, call.macroDefinitionLine);
+
+    bool result = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+
+    if (!result) return false;
+
+    // Get the last inserted call ID
+    sqlite3_int64 callId = sqlite3_last_insert_rowid(db_);
+
+    // Insert context stack relationships
+    for (size_t i = 0; i < call.contextStack.size(); i++) {
+        sql = R"(
+            INSERT INTO call_contexts (call_id, context_func_id, depth)
+            VALUES (?, (SELECT id FROM functions WHERE qualified_name = ?), ?)
+        )";
+
+        if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) {
+            return false;
+        }
+
+        sqlite3_bind_int64(stmt, 1, callId);
+        sqlite3_bind_text(stmt, 2, call.contextStack[i].c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(stmt, 3, static_cast<int>(i));
+
+        result = sqlite3_step(stmt) == SQLITE_DONE;
+        sqlite3_finalize(stmt);
+
+        if (!result) return false;
+    }
+
     return true;
 }
 

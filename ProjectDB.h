@@ -11,8 +11,7 @@ public:
     bool initializeSchema();
     bool storeFunction(const ASTSerializer::FunctionInfo& func);
     bool storeClass(const ASTSerializer::ClassInfo& cls); 
-    bool storeCallRelation(const std::string& caller,
-                         const std::string& callee);
+    bool storeCallRelation(const ASTSerializer::CallInfo& call);
 
 private:
     sqlite3* db_;

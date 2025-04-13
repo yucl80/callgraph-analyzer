@@ -25,6 +25,18 @@ public:
         unsigned column;
     };
 
+    struct CallInfo {
+        std::string caller;
+        std::string callee;
+        std::string filePath;
+        unsigned line;
+        unsigned column;
+        bool isMacroExpansion;
+        std::string macroDefinitionFile;
+        unsigned macroDefinitionLine;
+        std::vector<std::string> contextStack;
+    };
+
     ASTSerializer(const std::string& dbPath);
     ~ASTSerializer();
 
@@ -35,11 +47,13 @@ private:
     sqlite3* db_;
     std::vector<FunctionInfo> functions_;
     std::vector<ClassInfo> classes_;
+    std::vector<CallInfo> calls_;
+    std::vector<std::string> currentContextStack_;
 
     void traverseAST(CXCursor cursor);
     void processFunctionDecl(CXCursor cursor);
     void processClassDecl(CXCursor cursor);
-    void processCallExpr(CXCursor cursor);
+    void processCallExpr(CXCursor cursor, const std::vector<std::string>& contextStack = {});
     void processInheritance(CXCursor cursor);
 
     static std::string getCursorLocation(CXCursor cursor);
